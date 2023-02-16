@@ -2986,6 +2986,7 @@ na_ofi_match_provider(
             fi_info->fabric_attr->prov_name) != 0)
         return false;
 
+    printf("\ncomparing '%s' vs '%s' AF %d\n", verify_info->domain_name, fi_info->domain_attr->name, fi_info->addr_format);
     /* Does not match domain name (if provided) */
     if (verify_info->domain_name && verify_info->domain_name[0] != '\0' &&
         strcmp(verify_info->domain_name, fi_info->domain_attr->name) != 0)
@@ -3091,7 +3092,7 @@ na_ofi_parse_hostname_info(enum na_ofi_prov_type prov_type,
                 hostname_info, &hostname, &port, &domain_name);
             NA_CHECK_SUBSYS_NA_ERROR(cls, out, ret, "Could not parse sin info");
 
-            NA_LOG_SUBSYS_DEBUG(cls,
+            printf(
                 "Found hostname: %s, port %" PRIu16 ", domain %s", hostname,
                 port, domain_name);
 
@@ -3220,7 +3221,21 @@ na_ofi_parse_sin_info(const char *hostname_info, char **resolve_name_p,
             "strdup() of host_name failed");
 
         /* Domain, hostname and port, e.g. "lo/localhost:12345" */
-        if (strchr(hostname, ':')) {
+        #warning an ipv6 address will also contain a : In particular "[::1]:0" gets parsed as "[" here when it should be "[::1]"
+        if (hostname[0] == '[') {
+          /* IPv6 */
+          char *hostname_end = strchr(hostname, ']');
+          NA_CHECK_SUBSYS_ERROR(cls, hostname_end == NULL, error, ret, NA_INVALID_ARG,
+              "host_name has '[', but is missing corresponding ']'");
+          char *port_str = NULL;
+          strtok_r(hostname_end, ":", &port_str);
+          *hostname_end = '\0';
+          if (port_str) {
+            *port_p = (uint16_t) strtoul(port_str + 1, NULL, 10);
+          }
+          memmove(hostname, hostname + 1, strlen(hostname) + 1);
+        } else if (strchr(hostname, ':')) {
+          /* IPv4 */
             char *port_str = NULL;
             strtok_r(hostname, ":", &port_str);
             *port_p = (uint16_t) strtoul(port_str, NULL, 10);
